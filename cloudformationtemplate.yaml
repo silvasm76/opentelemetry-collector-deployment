@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A CloudFormation template to set up an ALB with custom HTTPS ports (4317 and 4318) pointing to an OpenTelemetry Collector on an EC2 instance.
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: "Name of an existing EC2 KeyPair to enable SSH access to the instance"
+    Default: "MyKeyPair"  # Replace with the name of your existing key pair or remove Default
+
+  CertificateArn:
+    Type: String
+    Description: The ARN of the ACM certificate
+    Default : "arn:aws:acm:us-east-1:412381771975:certificate/9b215cec-c9d9-4939-9656-1d16e50aa46f"
+
+Resources:
+  # VPC Creation
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  # Internet Gateway
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  # Attach the Internet Gateway to the VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  # Route Table and Routes
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+
+  RouteToIGW:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+   # Associate Route Table with Subnet1 to make it public
+  MySubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+        SubnetId: !Ref MySubnet1
+        RouteTableId: !Ref MyRouteTable
+
+  # Subnet 1 in AZ 1
+  MySubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]  # Selects the first AZ
+
+  # Subnet 2 in AZ 2
+  MySubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]  # Selects the second AZ
+
+  # Security Group for EC2 and ALB
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH and HTTPS access
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 13133
+          ToPort: 13133
+          CidrIp: 0.0.0.0/0
+
+  # Application Load Balancer
+  MyLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: "OTELCollectorALB"
+      Scheme: internet-facing
+      Subnets:
+        - !Ref MySubnet1
+        - !Ref MySubnet2
+      SecurityGroups:
+        - !Ref MySecurityGroup
+
+  MyTargetGroup4318:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref MyVPC
+      Port: 4318
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref MyInstance  # Points to the EC2 instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: "13133"
+      HealthCheckPath: "/healthz"
+      
+  MyALBListener4318:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MyLoadBalancer
+      Port: 4318
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTargetGroup4318
+
+  # EC2 Instance to run the OpenTelemetry Collector
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-06b21ccaeff8cd686  # Specify a Linux AMI ID
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName  # Reference the existing key pair
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeviceIndex: 0
+        SubnetId: !Ref MySubnet1  # Define the subnet ID within NetworkInterfaces
+        GroupSet:
+          - !Ref MySecurityGroup  # Define security group within GroupSet
+      UserData: 
+        Fn::Base64: |
+            #!/bin/bash
+            # Download and setup the OpenTelemetry Collector
+            curl -L -o /tmp/otelcol-contrib_0.113.0_linux_amd64.tar.gz https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.113.0/otelcol-contrib_0.113.0_linux_amd64.tar.gz
+            cd /tmp
+            tar -xzf otelcol-contrib_0.113.0_linux_amd64.tar.gz
+            mv otelcol-contrib /usr/bin/otelcol
+            chmod +x /usr/bin/otelcol
+            cat <<EOT > /tmp/otelconfig.yaml
+            receivers:
+              otlp:
+                protocols:
+                  grpc:
+                    endpoint: 0.0.0.0:4317
+                    auth:
+                        authenticator: basicauth/server
+                  http:
+                    endpoint: 0.0.0.0:4318
+                    auth:
+                        authenticator: basicauth/server
+                        
+            processors:
+              batch:
+              attributes/betterstack:   
+                actions:
+                  - key: better_stack_source_token
+                    value: vw4m1paMRZAHqx5ZrzaUiKyv
+                    action: insert
+            
+            exporters:
+              debug: 
+                verbosity: detailed
+              otlphttp:
+                endpoint: "https://in-otel.logs.betterstack.com:443"
+            
+            
+            extensions:
+                health_check:
+                    endpoint: "0.0.0.0:13133"
+                basicauth/server:
+                    htpasswd:
+                        inline:
+                            test:password
+              
+            service:
+              extensions: [health_check,basicauth/server]
+              pipelines:
+                logs:
+                  receivers: [otlp]
+                  processors: [batch,attributes/betterstack]
+                  exporters: [otlphttp,debug]
+            EOT
+            /usr/bin/otelcol --config=/tmp/otelconfig.yaml
