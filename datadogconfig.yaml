@@ -8,8 +8,8 @@ receivers:
 
 exporters:
   # Datadog exporter configuration
-  debug:
-    verbosity: detailed
+#  debug:
+#    verbosity: detailed
   datadog:
     api:
       key:  "{apikey}" # Replace with your actual Datadog API Key
