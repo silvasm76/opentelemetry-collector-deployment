@@ -1,0 +1,33 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+            authenticator: basicauth/server
+
+exporters:
+  # Datadog exporter configuration
+  debug:
+    verbosity: detailed
+  datadog:
+    api:
+      key:  "{{apikey}}" # Replace with your actual Datadog API Key
+      site:  "datadoghq.eu"                    # Site for the EU region
+
+
+extensions:
+    health_check:
+        endpoint: "0.0.0.0:13133"
+    basicauth/server:
+        htpasswd:
+            inline:
+                test:password
+
+service:
+  extensions: [health_check,basicauth/server]
+  pipelines:
+    logs:
+        receivers: [otlp]
+        processors: []
+        exporters: [datadog,debug]
