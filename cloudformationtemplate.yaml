@@ -11,7 +11,11 @@ Parameters:
     Type: String
     Description: The ARN of the ACM certificate
     Default : ""
-
+    
+  UserDataFile:
+    Type: String
+    Description: "Base64-encoded content of the UserData script"
+    
 Resources:
   # VPC Creation
   MyVPC:
@@ -144,56 +148,4 @@ Resources:
         GroupSet:
           - !Ref MySecurityGroup  # Define security group within GroupSet
       UserData: 
-        Fn::Base64: |
-            #!/bin/bash
-            # Download and setup the OpenTelemetry Collector
-            curl -L -o /tmp/otelcol-contrib_0.113.0_linux_amd64.tar.gz https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.113.0/otelcol-contrib_0.113.0_linux_amd64.tar.gz
-            cd /tmp
-            tar -xzf otelcol-contrib_0.113.0_linux_amd64.tar.gz
-            mv otelcol-contrib /usr/bin/otelcol
-            chmod +x /usr/bin/otelcol
-            cat <<EOT > /tmp/otelconfig.yaml
-            receivers:
-              otlp:
-                protocols:
-                  grpc:
-                    endpoint: 0.0.0.0:4317
-                    auth:
-                        authenticator: basicauth/server
-                  http:
-                    endpoint: 0.0.0.0:4318
-                    auth:
-                        authenticator: basicauth/server
-                        
-            processors:
-              batch:
-              attributes/betterstack:   
-                actions:
-                  - key: better_stack_source_token
-                    value: vw4m1paMRZAHqx5ZrzaUiKyv
-                    action: insert
-            
-            exporters:
-              debug: 
-                verbosity: detailed
-              otlphttp:
-                endpoint: "https://in-otel.logs.betterstack.com:443"
-            
-            
-            extensions:
-                health_check:
-                    endpoint: "0.0.0.0:13133"
-                basicauth/server:
-                    htpasswd:
-                        inline:
-                            test:password
-              
-            service:
-              extensions: [health_check,basicauth/server]
-              pipelines:
-                logs:
-                  receivers: [otlp]
-                  processors: [batch,attributes/betterstack]
-                  exporters: [otlphttp,debug]
-            EOT
-            /usr/bin/otelcol --config=/tmp/otelconfig.yaml
+        Fn::Base64: !Ref UserDataFile # Use the Base64-encoded UserData file content
