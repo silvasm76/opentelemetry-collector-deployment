@@ -1,6 +1,6 @@
 # Adjust this settings
 $certificateDomain = "otelcollector.cloud3s.online"
-$DataDog_APIKey = "c859e0ef4f86559ec81fc5506ea12800"
+$DataDog_APIKey = "your datadog api key"
 
 # Internal variables
 $stackName = "my-ec2-stack"
