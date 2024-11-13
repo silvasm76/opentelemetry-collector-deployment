@@ -17,6 +17,11 @@ Parameters:
     Description: "Base64-encoded content of the UserData script"
     
 Resources:
+  MyKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: "MyNewKeyPair"  # Specify the name of the new key pair you want to create
+
   # VPC Creation
   MyVPC:
     Type: AWS::EC2::VPC
@@ -140,7 +145,7 @@ Resources:
     Properties:
       ImageId: ami-06b21ccaeff8cd686  # Specify a Linux AMI ID
       InstanceType: t2.micro
-      KeyName: !Ref KeyName  # Reference the existing key pair
+      KeyName: !Ref MyKeyPair   # Reference the existing key pair
       NetworkInterfaces:
       - AssociatePublicIpAddress: true
         DeviceIndex: 0
