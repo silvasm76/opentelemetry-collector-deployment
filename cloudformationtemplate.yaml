@@ -2,11 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: A CloudFormation template to set up an ALB with custom HTTPS ports (4317 and 4318) pointing to an OpenTelemetry Collector on an EC2 instance.
 
 Parameters:
-  KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: "Name of an existing EC2 KeyPair to enable SSH access to the instance"
-    Default: "MyKeyPair"  # Replace with the name of your existing key pair or remove Default
-
   CertificateArn:
     Type: String
     Description: The ARN of the ACM certificate
