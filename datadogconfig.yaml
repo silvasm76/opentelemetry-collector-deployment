@@ -12,7 +12,7 @@ exporters:
     verbosity: detailed
   datadog:
     api:
-      key:  "{{apikey}}" # Replace with your actual Datadog API Key
+      key:  "{apikey}" # Replace with your actual Datadog API Key
       site:  "datadoghq.eu"                    # Site for the EU region
 
 
