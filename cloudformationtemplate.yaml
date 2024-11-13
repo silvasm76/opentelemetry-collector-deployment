@@ -10,7 +10,7 @@ Parameters:
   CertificateArn:
     Type: String
     Description: The ARN of the ACM certificate
-    Default : "arn:aws:acm:us-east-1:412381771975:certificate/9b215cec-c9d9-4939-9656-1d16e50aa46f"
+    Default : ""
 
 Resources:
   # VPC Creation
